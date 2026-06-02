@@ -17,7 +17,7 @@ st.markdown("""
     .stock-card { background-color: white; padding: 20px; border-radius: 12px; border-left: 5px solid #4364F7; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 15px; }
     .metric-box { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.03); text-align: center; border: 1px solid #eef2f5; }
     </style>
-""", unsafe_allow_index=True)
+""", unsafe_allow_html=True)
 
 st.title("🚀 PRO AI 주식 투자 대시보드")
 st.write("거시 경제 흐름과 당일 거래대금 주도주를 결합하여 내일의 유망 종목을 선별합니다.")
@@ -114,7 +114,7 @@ if st.button("⚡ 실시간 융합 데이터 분석 및 TOP 10 종목 추출", u
                 collected_macro_news += f"- {entry.title}\n"
 
     with st.spinner("🤖 3. 제미나이가 논리 구조 분석 후 TOP 10 압축 중..."):
-        # 제미나이에게 디테일하면서도 간결(가독성 극대화)하게 보고서를 작성하라고 지시
+        # 제미나이에게 요약 형태로 리포트를 작성하라고 지시
         prompt = f"""
         너는 대한민국 최고의 여의도 펀드매니저이자 금융 데이터 분석가야.
         제공된 52주 코스피 시황, 11개 핵심 매크로 뉴스, 20개의 시장 주도주와 해당 기업의 뉴스를 종합 분석해줘.
@@ -147,5 +147,5 @@ if st.button("⚡ 실시간 융합 데이터 분석 및 TOP 10 종목 추출", u
         st.success("✨ AI 종합 압축 분석이 완료되었습니다!")
         st.markdown("## 🎯 제미나이 엄선: 내일의 투자 유망 종목 TOP 10")
         
-        # HTML 태그가 포함된 제미나이의 결과물을 안전하게 UI에 렌더링
-        st.markdown(response.text, unsafe_allow_index=True)
+        # HTML 태그가 포함된 제미나이의 결과물을 안전하게 UI에 렌더링 (수정 완료)
+        st.markdown(response.text, unsafe_allow_html=True)
