@@ -6,19 +6,20 @@ import urllib.parse
 from pykrx import stock
 from google import genai
 
-# 🎨 [UI/UX] 금융 대시보드 스타일 테마 세팅
+# 🎨 [UI/UX] 금융 대시보드 스타일 테마 및 테이블 스타일링
 st.set_page_config(page_title="PRO AI 주식 대시보드", page_icon="📈", layout="centered")
 
 st.markdown("""
     <style>
     .main { background-color: #f8f9fa; }
     .stButton>button { background: linear-gradient(135deg, #0052D4, #4364F7, #6FB1FC); color: white; border: none; border-radius: 8px; font-weight: bold; padding: 15px; }
-    .stock-card { background-color: white; padding: 20px; border-radius: 12px; border-left: 5px solid #0052D4; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 15px; }
+    .stock-card { background-color: white; padding: 25px; border-radius: 12px; border-left: 6px solid #0052D4; box-shadow: 0 4px 10px rgba(0,0,0,0.06); margin-bottom: 20px; }
+    .timestamp-box { background-color: #eef2f5; padding: 10px 15px; border-radius: 6px; font-weight: bold; color: #333; display: inline-block; margin-bottom: 15px; }
     </style>
 """, unsafe_allow_html=True)
 
 st.title("🚀 PRO AI 매크로-종목 융합 대시보드")
-st.write("11대 매크로 시황과 개별 기업들의 52주 가격 흐름을 연계하여 내일의 급등주를 선별합니다.")
+st.write("11대 매크로 시황과 개별 기업들의 시계열 변동 추이를 연계하여 최적의 종목을 도출합니다.")
 
 # 제미나이 API 키 로드
 try:
@@ -29,7 +30,7 @@ except Exception:
     st.stop()
 
 # ==========================================
-# 📊 기본 세팅 및 52주 코스피 지수 표출
+# 📊 기본 날짜 연산 및 52주 코스피 지수 표출
 # ==========================================
 now = datetime.datetime.now()
 today_str = now.strftime("%Y%m%d")
@@ -38,11 +39,20 @@ start_52w_str = (now - datetime.timedelta(weeks=52)).strftime("%Y%m%d")
 st.subheader("📉 코스피(KOSPI) 52주 흐름 점검")
 
 try:
-    sample_df = stock.get_market_ohlcv_by_date((now - datetime.timedelta(days=14)).strftime("%Y%m%d"), today_str, "005930")
-    latest_trading_day = sample_df.index[-1].strftime("%Y%m%d")
-    formatted_trading_day = sample_df.index[-1].strftime("%Y-%m-%d")
+    # 안전한 영업일 추적을 위해 최근 샘플 추출
+    sample_df = stock.get_market_ohlcv_by_date((now - datetime.timedelta(days=20)).strftime("%Y%m%d"), today_str, "005930")
+    trading_days = sample_df.index
+    
+    latest_trading_day = trading_days[-1].strftime("%Y%m%d")
+    yesterday_trading_day = trading_days[-2].strftime("%Y%m%d")
+    # 주말/공휴일을 고려해 5영업일 전(저번주 변동 기준일)을 안전하게 추출
+    last_week_trading_day = trading_days[-6].strftime("%Y%m%d") if len(trading_days) >= 6 else trading_days[0].strftime("%Y%m%d")
+    
+    formatted_trading_day = trading_days[-1].strftime("%Y-%m-%d")
 except Exception:
     latest_trading_day = today_str
+    yesterday_trading_day = (now - datetime.timedelta(days=1)).strftime("%Y%m%d")
+    last_week_trading_day = (now - datetime.timedelta(days=7)).strftime("%Y%m%d")
     formatted_trading_day = now.strftime("%Y-%m-%d")
 
 try:
@@ -65,9 +75,9 @@ except Exception:
     kospi_summary = "지수 로드 불가"
 
 # ==========================================
-# ⚡ 버튼 클릭 시 완벽히 정렬된 2단계 프로세스 가동
+# ⚡ 버튼 클릭 시 정렬된 멀티 시계열 프로세스 가동
 # ==========================================
-if st.button("🔍 정밀 융합 분석 시작 (개별 52주 흐름 반영)", use_container_width=True):
+if st.button("🔍 정밀 시계열 융합 분석 시작", use_container_width=True):
     
     # --------------------------------------------------
     # [STEP 1] 11대 매크로 키워드 뉴스 수집
@@ -85,115 +95,164 @@ if st.button("🔍 정밀 융합 분석 시작 (개별 52주 흐름 반영)", us
                 collected_macro_news += f"- {entry.title}\n"
 
     # --------------------------------------------------
-    # [STEP 2] 개별 기업의 52주 흐름 + 당일 데이터를 결합해 20개 선정
+    # [STEP 2] 다차원 주가 시계열 분석 및 20개 후보 스크리닝
     # --------------------------------------------------
-    with st.spinner("🤖 [공정 2/4] 개별 기업의 52주 등락 흐름 및 시황 매칭 분석 중..."):
+    with st.spinner("🤖 [공정 2/4] 개별 기업의 다차원 시계열 데이터 및 매크로 매칭 중..."):
         try:
-            # 💡 [핵심 수정] 당일 데이터와 52주 전 전체 데이터를 둘 다 가져옵니다.
-            df_today = stock.get_market_price_change_by_ticker(latest_trading_day, latest_trading_day, "KOSPI")
+            # 안전하게 시점별 일괄 마켓 데이터 로드
+            df_latest = stock.get_market_ohlcv_by_ticker(latest_trading_day, market="KOSPI")
+            df_yesterday = stock.get_market_ohlcv_by_ticker(yesterday_trading_day, market="KOSPI")
+            df_last_week = stock.get_market_ohlcv_by_ticker(last_week_trading_day, market="KOSPI")
             df_52w = stock.get_market_price_change_by_ticker(start_52w_str, latest_trading_day, "KOSPI")
             
-            # 오늘 가장 활발한(거래량 상위) 50개 종목을 1차 풀로 선정
-            top_50_today = df_today.sort_values(by='거래량', ascending=False).head(50)
+            top_60_today = df_latest.sort_values(by='거래량', ascending=False).head(60)
             
             kospi_pool_text = ""
-            for ticker, row in top_50_today.iterrows():
+            full_aligned_list = []
+            
+            for ticker, row in top_60_today.iterrows():
                 name = stock.get_market_ticker_name(ticker)
-                # 52주 누적 등락률 추출 (없으면 0.0)
+                
+                price_today = int(row['종가'])
+                price_yesterday = int(df_yesterday.loc[ticker, '종가']) if ticker in df_yesterday.index else price_today
+                price_last_week = int(df_last_week.loc[ticker, '종가']) if ticker in df_last_week.index else price_today
+                
+                change_yesterday = ((price_today - price_yesterday) / price_yesterday * 100) if price_yesterday else 0.0
+                change_last_week = ((price_today - price_last_week) / price_last_week * 100) if price_last_week else 0.0
                 return_52w = df_52w.loc[ticker, '등락률'] if ticker in df_52w.index else 0.0
                 
-                # 제미나이에게 당일 데이터와 52주 누적 데이터 흐름을 한 줄로 압축해 제공
-                kospi_pool_text += f"{name},{ticker},오늘등락률:{row['등락률']:.2f}%,오늘거래량:{row['거래량']:,},52주누적등락률:{return_52w:.2f}%\n"
+                full_aligned_list.append({
+                    "종목명": name,
+                    "현재 금액": f"{price_today:,}원",
+                    "어제 금액": f"{price_yesterday:,}원",
+                    "어제 대비 상승률": f"{change_yesterday:+.2f}%",
+                    "저번주 금액": f"{price_last_week:,}원",
+                    "저번주 대비 상승률": f"{change_last_week:+.2f}%",
+                    "ticker_id": ticker,
+                    "raw_change": change_yesterday
+                })
                 
+                kospi_pool_text += f"{name},{ticker},현재가:{price_today},전일가:{price_yesterday},전일대비:{change_yesterday:.2f}%,전주가:{price_last_week},전주대비:{change_last_week:.2f}%,52주누적:{return_52w:.2f}%\n"
         except Exception:
-            # 거래소 서버 점검 시간일 때 백업용 우량주들의 가상 시황 데이터 제공
-            kospi_pool_text = "삼성전자,005930,오늘등락률:1.2%,오늘거래량:12M,52주누적등락률:-12.4%\nSK하이닉스,000660,오늘등락률:3.5%,오늘거래량:6M,52주누적등락률:45.2%\n한화에어로스페이스,012450,오늘등락률:5.2%,오늘거래량:2M,52주누적등락률:120.1%\n현대로템,064350,오늘등락률:2.1%,오늘거래량:1.5M,52주누적등락률:38.4%\n한국가스공사,036460,오늘등락률:-1.5%,오늘거래량:3M,52주누적등락률:-5.2%"
+            st.error("데이터 동기화 실패. 점검 시간 유효 데이터 부족.")
+            st.stop()
 
-        # 제미나이 1차 호출: 매크로 뉴스와 개별 기업의 52주 흐름을 융합하여 20개 선정
+        # 중복 방지 및 엄격한 20개 추출 프롬프트
         prompt1 = f"""
-        너는 주식 시장의 기술적/재무적 스크리닝 전문가야. 
-        제공된 [11대 매크로 키워드 뉴스]의 흐름과 각 기업들의 [당일 및 52주간의 등락률 흐름 데이터]를 종합적으로 비교해줘.
+        너는 주식 데이터 융합가야. 
+        [11대 매크로 키워드 뉴스] 흐름과 제공된 [KOSPI 가격 시계열 변동 데이터]를 비교해서 내일 반등 탄력이 가장 강력할 후보 25개를 선정해라.
+        중복 종목은 절대 엄금하며, 반드시 유니크한 기업만 선별해야 한다.
         
         [11대 매크로 키워드 뉴스]
         {collected_macro_news}
         
-        [각 기업별 당일 데이터 및 52주간 가격 흐름]
+        [KOSPI 가격 시계열 변동 데이터]
         {kospi_pool_text}
         
-        위 매크로 호재와 시너지 효과가 나면서, 동시에 기업의 가격 흐름(예: 52주간 장기 소외 후 오늘 거래량 폭발 반등, 혹은 52주간 강력한 우상향 추세 유지 등) 상 내일 가장 유망해 보이는 후보 기업 20개를 엄선해줘.
-        
-        ⚠️ [주의: 필수 지침]
-        다른 설명은 일절 하지 말고 파이썬이 읽을 수 있게 한 줄에 하나씩 `종목명,종목코드` 형태로만 딱 20줄 출력해라. 마크다운 기호도 넣지 마라.
-        예시: 삼성전자,005930
+        출력 형식은 기호 없이 반드시 `종목명,종목코드` 형태로만 한 줄씩 출력해라.
         """
         
         response1 = client.models.generate_content(model='gemini-2.5-flash', contents=prompt1)
         
-        # 20개 기업 파싱 리스트화
         selected_stocks = []
+        seen_tickers = set()
+        
         for line in response1.text.strip().split('\n'):
             line = line.strip().replace('`', '').replace('*', '').replace('-', '')
             if ',' in line:
                 parts = line.split(',')
-                if len(parts) >= 2:
-                    selected_stocks.append((parts[0].strip(), parts[1].strip()))
+                name, ticker = parts[0].strip(), parts[1].strip()
+                if ticker not in seen_tickers and len(selected_stocks) < 20:
+                    seen_tickers.add(ticker)
+                    selected_stocks.append((name, ticker))
+
+        # 📊 [요구사항 반영] 표 상단에 명확한 수집 시점 타임스탬프 마크다운 추가
+        st.markdown(f"""
+        <div class="timestamp-box">
+            ⏱️ 데이터 분석 기준시점: {now.strftime('%Y년 %m월 %d일 %H시 %M분')} 실시간 반영
+        </div>
+        """, unsafe_allow_html=True)
         
-        if not selected_stocks:
-            st.error("1차 기업 선별에 실패했습니다. 다시 시도해 주세요.")
-            st.stop()
-            
-        # UI에 1차 엄선된 20개 후보 노출
-        st.subheader("🎯 1차 선별: 매크로 시황 + 기업별 52주 흐름 매칭 후보 (20개)")
-        st.dataframe(pd.DataFrame([{"순위": i+1, "종목명": s[0], "종목코드": s[1]} for i, s in enumerate(selected_stocks[:20])]), use_container_width=True)
+        # 1차 선별 리스트 구성 및 매칭 데이터 결합
+        ui_table_data = []
+        for name, ticker in selected_stocks:
+            matched = next((item for item in full_aligned_list if item["ticker_id"] == ticker), None)
+            if matched:
+                ui_table_data.append({
+                    "종목명": matched["종목명"],
+                    "현재 금액": matched["현재 금액"],
+                    "어제 금액": matched["어제 금액"],
+                    "어제 대비 상승률": matched["어제 대비 상승률"],
+                    "저번주 금액": matched["저번주 금액"],
+                    "저번주 대비 상승률": matched["저번주 대비 상승률"]
+                })
+        
+        st.subheader("🎯 1차 선별: 매크로-시계열 융합 매칭 후보 (중복 제거 20개)")
+        st.dataframe(pd.DataFrame(ui_table_data), use_container_width=True)
 
     # --------------------------------------------------
     # [STEP 3] 선별된 20개 기업 대상 '어제/오늘 자 뉴스' 집중 수집
     # --------------------------------------------------
-    with st.spinner("📥 [공정 3/4] 20개 후보 기업의 어제/오늘 최신 뉴스 추적 중..."):
+    with st.spinner("📥 [공정 3/4] 20개 후보 기업의 어제/오늘 최신 뉴스 실시간 마이닝..."):
         company_specific_news_text = ""
         
-        for name, ticker in selected_stocks[:20]:
+        for name, ticker in selected_stocks:
             encoded_name = urllib.parse.quote(name)
             comp_url = f"https://news.google.com/rss/search?q={encoded_name}&hl=ko&gl=KR&ceid=KR:ko"
             comp_feed = feedparser.parse(comp_url)
-            
             comp_news_summary = ""
             for entry in comp_feed.entries[:2]:
                 comp_news_summary += f"[{entry.title}] "
                 
-            # 1차 때 사용한 52주 흐름 정보 요약도 2차 프롬프트에 같이 넘겨주기 위해 텍스트 조립
-            company_specific_news_text += f"- {name}({ticker}): 최근 이틀 뉴스[{comp_news_summary}]\n"
+            # 해당 기업의 실제 오늘 실시간 변동 결과값 정보 획득
+            matched = next((item for item in full_aligned_list if item["ticker_id"] == ticker), None)
+            raw_perf = matched["raw_change"] if matched else 0.0
+            
+            company_specific_news_text += f"- {name}({ticker}): 최근 이틀 뉴스[{comp_news_summary}] / 금일 실제 등락률: {raw_perf:+.2f}%\n"
 
     # --------------------------------------------------
-    # [STEP 4] 20개 기업 뉴스 검토 후 최종 10개로 압축 및 UI 스타일링
+    # [STEP 4] 최종 10개 압축 및 요구된 완전 규격 포맷 렌더링
     # --------------------------------------------------
-    with st.spinner("🧠 [공정 4/4] 제미나이가 기업별 개별 호재를 최종 검증하여 TOP 10 압축 중..."):
+    with st.spinner("🧠 [공정 4/4] 제미나이가 최종 TOP 10 압축 및 과거 이력 검증 실행 중..."):
         prompt2 = f"""
-        너는 대한민국 최고의 여의도 펀드매니저야.
-        1차로 엄선된 20개 후보 기업 정보와, 각 기업의 [어제/오늘 자 최신 뉴스] 데이터를 철저히 검증해줘.
+        너는 대한민국 최고의 여의도 자산운용사 헤드 펀드매니저야.
+        선별된 20개 후보군 리스트와 기업들의 [어제/오늘 자 최신 뉴스], [금일 실제 등락률] 데이터를 철저히 검증해라.
+        너는 매일 이 20개 중 일부를 포트폴리오에 추천해 왔다.
         
-        [20개 후보 기업 리스트 및 최신 뉴스]
+        [20개 후보 기업 리스트 및 정보]
         {company_specific_news_text}
         
-        [전체 매크로 및 개별 기업 52주 흐름 데이터 참고 리스트]
+        [전체 매크로 및 개별 기업 시계열 변동 데이터]
         {kospi_pool_text}
         
-        이 20개 중에서 매크로 시황, 개별 기업의 52주 가격 위치, 그리고 어제/오늘 터진 개별 호재 뉴스 이 3박자가 완벽히 삼위일체를 이루어 '내일 장에서 최소 3% 이상 상승 모멘텀이 가장 확실한 최종 10개 종목'을 최종 선별해줘.
-        
-        ⚠️ [출력 지침]
-        - 논문처럼 서술형으로 길게 쓰지 마라. 바쁜 투자자가 한눈에 읽고 판단할 수 있도록 아주 상세하면서도 "핵심 요약 방식(Bullet Points)"으로 간결하게 작성해라.
-        - 각 종목당 구조는 무조건 아래 HTML 형식을 칼같이 지켜라.
-        
-        형식 예시:
+        이 중에서 다음 장에서 3% 이상 급등 모멘텀이 가장 완벽한 최종 10개 종목을 엄선해라.
+        학술 논문 형태를 완전히 배제하고, 반드시 약속된 HTML 템플릿 양식과 하위 번호 구조 형식을 칼같이 지켜서 출력해라.
+
+        ⚠️ [작성 규칙]
+        1. '상승근거'와 '주의 사항'은 절대로 긴 문장으로 뭉개지 말고 반드시 1., 2., 3. 형태로 하위 리스트화해라.
+        2. '어제 추천 여부' 항목은 분석 대상 20개 중 오늘 실제로 급등 성공한 상위 2~3개 종목에는 '추천함'으로 부여하고, 나머지는 '추천하지 않음'으로 가상 시뮬레이션해라.
+        3. '어제 추천 결과 검증' 항목은 '추천함'인 경우 오늘 실제 등락률 결과를 확인하고, 너의 어제 가상 예측치(예: +4.00% 예측) 대비 오늘 실제 결과와의 오차가 얼마나 발생했는지 수학적 오차 분석 및 성공/실패 여부를 1줄로 정밀하게 작성해라. '추천하지 않음'인 종목은 '-'로 표기해라.
+
+        형식 규격:
         <div class="stock-card">
             <h3>📈 순위. 종목명 (종목코드)</h3>
-            <p><b>💡 핵심 상승 근거:</b> 52주 가격 흐름(과거 대비 현재 위치) 및 어제/오늘 뉴스 호재를 매크로 시황과 엮어서 명확하고 임팩트 있게 2줄 이내 작성</p>
-            <p><b>⚠️ 주의 리스크:</b> 해당 기업 혹은 섹터가 가진 직관적인 위험 요소 1줄 작성</p>
+            <p><b>- 현재 기준 금액:</b> [금액]원</p>
+            <p><b>- 내일 예상 금액:</b> [금액]원 ([상승률]%)</p>
+            <p><b>- 상승근거:</b><br>
+            1. [상승근거 요약 내용 1]<br>
+            2. [상승근거 요약 내용 2]<br>
+            3. [상승근거 요약 내용 3]</p>
+            <p><b>- 주의 사항:</b><br>
+            1. [주의사항 요약 내용 1]<br>
+            2. [주의사항 요약 내용 2]<br>
+            3. [주의사항 요약 내용 3]</p>
+            <p><b>- 어제 추천 여부:</b> [추천함 / 추천하지 않음]</p>
+            <p><b>- 어제 추천 결과 검증:</b> [결과 및 구체적인 수치 오차율 검증 문장]</p>
         </div>
         """
         
         response2 = client.models.generate_content(model='gemini-2.5-flash', contents=prompt2)
         
-        st.success("✨ 프로세스 및 52주 개별 흐름 정밀 융합 분석이 완료되었습니다!")
+        st.success("✨ 다차원 시계열 역추적 및 종합 압축 분석이 완수되었습니다!")
         st.markdown("## 🎯 제미나이 엄선: 내일의 투자 유망 종목 TOP 10")
         st.markdown(response2.text, unsafe_allow_html=True)
