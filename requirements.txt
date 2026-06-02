@@ -1,0 +1,4 @@
+pykrx
+google-genai
+feedparser
+pandas
