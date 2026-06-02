@@ -44,13 +44,19 @@ if st.button("🚀 실시간 AI 추천 종목 뽑기", type="primary", use_conta
             stock_list_text = "- 삼성전자: 등락률 +1.5%, 거래량 15,000,000\n- SK하이닉스: 등락률 +3.2%, 거래량 5,000,000"
             st.warning("장 시작 전이거나 휴일입니다. 샘플 데이터로 분석을 진행합니다.")
 
-        # 2. 뉴스 데이터 수집
-        keywords = ["코스피 시황", "젠슨황", "트럼프 뉴스", "이재명"]
+# 2. 뉴스 데이터 수집
+        import urllib.parse  # 한글/공백 변환을 위한 도구 로드
+        
+        keywords = ["코스피", "젠슨황", "트럼프 뉴스", "이재명"]
         collected_news = ""
         
         for kw in keywords:
             collected_news += f"\n[키워드: {kw}]\n"
-            url = f"https://news.google.com/rss/search?q={kw}&hl=ko&gl=KR&ceid=KR:ko"
+            
+            # 💡 중요: "코스피 시황" 같은 한글과 공백을 인터넷 주소용 문자로 안전하게 변환합니다.
+            encoded_kw = urllib.parse.quote(kw)
+            url = f"https://news.google.com/rss/search?q={encoded_kw}&hl=ko&gl=KR&ceid=KR:ko"
+            
             feed = feedparser.parse(url)
             for entry in feed.entries[:3]:
                 collected_news += f"- {entry.title}\n"
