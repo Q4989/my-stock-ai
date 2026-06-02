@@ -2,3 +2,4 @@ pykrx
 google-genai
 feedparser
 pandas
+requests
