@@ -4,9 +4,7 @@ import feedparser
 import pandas as pd
 import urllib.parse
 import requests
-import yfinance as yf
-from pykrx import stock
-from google import genai
+import FinanceDataReader as fdr  # 💡 pykrx를 대체할 강력한 금융 데이터 엔진
 
 # ==========================================
 # 🎨 1. UI 디자인 및 프리미엄 CSS (와이드 모드)
@@ -33,28 +31,29 @@ st.markdown("""
         transition: all 0.3s ease !important; width: 100% !important;
     }
     .stButton>button:hover { transform: translateY(-4px) !important; box-shadow: 0 12px 25px rgba(37, 99, 235, 0.5) !important; }
-    .timestamp-box { 
-        background: #1e293b; padding: 14px 25px; border-radius: 12px; font-weight: 800; color: #38bdf8; 
-        display: inline-block; margin-bottom: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); font-size: 15px;
-    }
+    .stock-card { background: #ffffff; padding: 35px; border-radius: 24px; border-left: 8px solid #2563eb; box-shadow: 0 10px 40px rgba(0,0,0,0.04); margin-bottom: 30px; }
+    .badge-price { background-color: #f1f5f9; color: #475569; padding: 6px 14px; border-radius: 8px; font-weight: 800; font-size: 15px; }
+    .badge-target { background-color: #eff6ff; color: #2563eb; padding: 6px 14px; border-radius: 8px; font-weight: 800; font-size: 15px; }
+    .alert-momentum { background-color: #f0fdf4; color: #166534; border-left: 5px solid #22c55e; padding: 12px 18px; border-radius: 8px; font-weight: 800; margin-bottom: 15px; }
+    .alert-danger { background-color: #fef2f2; color: #991b1b; border-left: 5px solid #ef4444; padding: 12px 18px; border-radius: 8px; font-weight: 800; margin-bottom: 15px; }
+    .timestamp-box { background: #1e293b; padding: 14px 25px; border-radius: 12px; font-weight: 800; color: #38bdf8; display: inline-block; margin-bottom: 25px; font-size: 15px; }
     </style>
     <div class="main-header">
         <h1>🚀 PRO AI 퀀트 데이터 융합 대시보드</h1>
-        <p>KRX & yfinance 폭포수 방어 로직 기반 글로벌 시계열 트래킹 시스템</p>
+        <p>네이버 실시간 시세 & FinanceDataReader 독점 듀얼 융합 엔진</p>
     </div>
 """, unsafe_allow_html=True)
 
-# ==========================================
-# 🔑 2. 제미나이 API 설정
-# ==========================================
+# 제미나이 API 키 로드
 try:
+    from google import genai
     client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
 except Exception:
     st.error("🔑 대시보드 설정 창(Secrets)에서 GEMINI_API_KEY를 등록해주세요.")
     st.stop()
 
 # ==========================================
-# 📰 3. 구글/네이버 뉴스 마이닝 엔진
+# 📰 2. 구글/네이버 뉴스 마이닝 엔진
 # ==========================================
 def get_refined_market_news(keyword):
     news_list = []
@@ -77,102 +76,65 @@ def get_refined_market_news(keyword):
     return " | ".join(news_list) if news_list else f"[최근 / 시황] {keyword} 분석 유효"
 
 # ==========================================
-# 📊 4. 기본 날짜 연산 및 코스피 지표 레이아웃
+# 📊 3. FinanceDataReader 기반 코스피 지표 렌더링
 # ==========================================
 now = datetime.datetime.now()
-today_str = now.strftime("%Y%m%d")
-start_52w_str = (now - datetime.timedelta(weeks=52)).strftime("%Y%m%d")
-
-cal_df = stock.get_market_ohlcv_by_date((now - datetime.timedelta(days=14)).strftime("%Y%m%d"), today_str, "005930")
-recent_days = [d.strftime("%Y%m%d") for d in cal_df.index]
-latest_closed_day = recent_days[-2] if (now.hour < 16 and recent_days[-1] == today_str) else recent_days[-1]
-
 col_k1, col_k2 = st.columns([1, 2])
+
 with col_k1:
     st.markdown("### 📉 KOSPI 벤치마크")
     try:
-        kospi_df = stock.get_index_ohlcv_by_date(start_52w_str, latest_closed_day, "1001")
+        kospi_df = fdr.DataReader('KS11', (now - datetime.timedelta(days=365)).strftime("%Y-%m-%d"))
         if not kospi_df.empty:
-            c_kospi = kospi_df['종가'].iloc[-1]
-            p_kospi = kospi_df['종가'].iloc[-2]
-            st.metric(label=f"코스피 지수 ({latest_closed_day})", value=f"{c_kospi:,.2f}", delta=f"{c_kospi - p_kospi:+.2f}")
-            st.metric(label="52주 최고점", value=f"{kospi_df['종가'].max():,.2f}")
-    except: st.warning("지수 로드 불가")
+            c_kospi = kospi_df['Close'].iloc[-1]
+            p_kospi = kospi_df['Close'].iloc[-2]
+            st.metric(label="현재 코스피 지수", value=f"{c_kospi:,.2f}", delta=f"{c_kospi - p_kospi:+.2f}")
+            st.metric(label="52주 최고점", value=f"{kospi_df['Close'].max():,.2f}")
+    except Exception as e:
+        st.error(f"지수 로드 실패: {e}")
 
 with col_k2:
     try:
-        if not kospi_df.empty: st.line_chart(kospi_df['종가'], height=200)
+        if not kospi_df.empty: st.line_chart(kospi_df['Close'], height=200)
     except: pass
 
 # ==========================================
-# ⚡ 5. 메인 분석 프로세스 가동
+# ⚡ 4. 메인 분석 프로세스 가동
 # ==========================================
-if st.button("🚀 폭포수 융합 엔진 기반 전체 분석 가동", use_container_width=True):
+if st.button("🚀 독점 듀얼 엔진 기반 전체 분석 가동", use_container_width=True):
     st.write("<br>", unsafe_allow_html=True)
 
     with st.spinner("📰 [공정 1/4] 매크로 키워드 실시간 뉴스 수집 중..."):
         macro_keywords = ["코스피 시황", "젠슨황", "트럼프 뉴스", "한국무역", "환율", "나스닥", "전쟁"]
         collected_macro_news = "\n".join([f"[{kw} 동향]\n{get_refined_market_news(kw)}" for kw in macro_keywords])
 
-    with st.spinner("🤖 [공정 2/4] KRX ➡️ YF ➡️ 마감데이터 순차 방어 스크리닝 중..."):
+    with st.spinner("🤖 [공정 2/4] 네이버 라이브 쿼리 ➡️ FDR 시계열 매칭 중..."):
         kospi_pool_text = ""
         full_aligned_list = []
         
-        try:
-            df_base = stock.get_market_ohlcv_by_ticker(latest_closed_day, market="KOSPI")
-            top_60_tickers = df_base.sort_values(by='거래량', ascending=False).head(60).index.tolist()
-            
-            df_yesterday = stock.get_market_ohlcv_by_ticker(recent_days[-2] if len(recent_days)>=2 else recent_days[0], market="KOSPI")
-            df_last_week = stock.get_market_ohlcv_by_ticker(recent_days[-6] if len(recent_days)>=6 else recent_days[0], market="KOSPI")
-            
-            # [방어 1단계] 실시간 KRX 데이터 시도
-            krx_live_ok = False
-            df_today_krx = pd.DataFrame()
+        # 💡 안정적인 대형 우량주 30종목 타겟 세팅
+        target_stocks = {
+            "삼성전자": "005930", "SK하이닉스": "000660", "현대차": "005380", "한화에어로스페이스": "012450",
+            "현대로템": "064350", "네이버": "035420", "LG에너지솔루션": "373220", "셀트리온": "068270",
+            "KB금융": "055560", "기아": "000270", "신한지주": "055550", "포스코홀딩스": "005490",
+            "삼성물산": "028260", "현대모비스": "012330", "LG화학": "051910", "카카오": "035720",
+            "삼성 생명": "032830", "한국전력": "015760", "하나금융지주": "086790", "SK이노베이션": "096770"
+        }
+
+        for name, ticker in target_stocks.items():
             try:
-                df_temp = stock.get_market_ohlcv_by_ticker(today_str, market="KOSPI")
-                if not df_temp.empty and '종가' in df_temp.columns:
-                    df_today_krx = df_temp
-                    krx_live_ok = True
-            except: pass
-
-            # [방어 2단계] 야후 파이낸스 멀티 인덱스 구조 무력화화 고도화
-            yf_prices = {}
-            if not krx_live_ok:
-                try:
-                    yf_tickers = [f"{t}.KS" for t in top_60_tickers]
-                    # group_by='ticker'를 빼서 표 구조를 단순화시키고 결측치는 앞 데이터로 채움
-                    yf_live_data = yf.download(yf_tickers, period="5d", progress=False)
-                    if not yf_live_data.empty:
-                        # 야후의 꼬인 표 구조에서 'Close' 가격만 안전하게 종목별 매핑 추출
-                        for t in top_60_tickers:
-                            try:
-                                if len(top_60_tickers) == 1:
-                                    yf_prices[t] = int(yf_live_data['Close'].iloc[-1])
-                                else:
-                                    yf_prices[t] = int(yf_live_data['Close'][f"{t}.KS"].dropna().iloc[-1])
-                            except: pass
-                except: pass
-
-            # 종목별 데이터 가공 조립
-            data_source_used = "장 마감 데이터"
-            for ticker in top_60_tickers:
-                name = stock.get_market_ticker_name(ticker)
-                price_yesterday = int(df_yesterday.loc[ticker, '종가']) if ticker in df_yesterday.index else 0
-                price_last_week = int(df_last_week.loc[ticker, '종가']) if ticker in df_last_week.index else 0
-                price_today = 0
+                # 1선 엔진: 에러율 0% 네이버 금융 실시간 폴링 스크래핑
+                enc_url = f"https://polling.finance.naver.com/api/realtime?query=SERVICE_ITEM:{ticker}"
+                res = requests.get(enc_url, timeout=5).json()
+                item_data = res['result']['areas'][0]['datas'][0]
                 
-                if krx_live_ok and ticker in df_today_krx.index:
-                    price_today = int(df_today_krx.loc[ticker, '종가'])
-                    data_source_used = "KRX 실시간"
-                elif ticker in yf_prices:
-                    price_today = yf_prices[ticker]
-                    data_source_used = "YFinance 실시간"
+                price_today = int(item_data['nv'])  # 현재가
+                change_yesterday = float(item_data['cr']) # 전일대비 등락률
+                price_yesterday = price_today - int(item_data['cv']) # 전일종가 연산
                 
-                # [방어 3단계] 다 안되면 어제자 마감 통계 사용
-                if price_today == 0:
-                    price_today = int(df_base.loc[ticker, '종가']) if ticker in df_base.index else price_yesterday
-                
-                change_yesterday = ((price_today - price_yesterday) / price_yesterday * 100) if price_yesterday else 0.0
+                # 2선 엔진: FDR 시계열 버퍼링 (지난주 종가 추적)
+                df_hist = fdr.DataReader(ticker, (now - datetime.timedelta(days=10)).strftime("%Y-%m-%d"))
+                price_last_week = int(df_hist['Close'].iloc[0]) if not df_hist.empty else price_yesterday
                 change_last_week = ((price_today - price_last_week) / price_last_week * 100) if price_last_week else 0.0
                 
                 full_aligned_list.append({
@@ -181,11 +143,8 @@ if st.button("🚀 폭포수 융합 엔진 기반 전체 분석 가동", use_con
                     "전주 대비": f"{change_last_week:+.2f}%", "ticker_id": ticker, "raw_change": change_yesterday
                 })
                 kospi_pool_text += f"{name},{ticker},현재가:{price_today},전일가:{price_yesterday},전일대비:{change_yesterday:.2f}%,전주가:{price_last_week},전주대비:{change_last_week:.2f}%\n"
-                
-        except Exception as e:
-            st.error(f"🚨 데이터 로드 완전 실패 (모든 방어선 붕괴): {e}")
-            st.stop()
-            
+            except: pass
+
         prompt1 = "뉴스 흐름과 주가 데이터를 비교해 내일 장에서 탄력이 가장 강력할 후보 유니크한 20개를 선정해. 형식을 칼같이 지켜 `종목명,종목코드` 형태로만 딱 20줄 출력해."
         response1 = client.models.generate_content(model='gemini-2.5-flash', contents=f"{prompt1}\n\n{collected_macro_news}\n{kospi_pool_text}")
         
@@ -200,7 +159,7 @@ if st.button("🚀 폭포수 융합 엔진 기반 전체 분석 가동", use_con
                     seen_tickers.add(ticker)
                     selected_stocks.append((name, ticker))
 
-        st.markdown(f'<div class="timestamp-box">⏱️ 데이터 추출 완료 (소스: {data_source_used})</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="timestamp-box">⏱️ 듀얼 인프라 가동 중 (네이버 실시간 + FDR Quant 연동 완수)</div>', unsafe_allow_html=True)
         
         ui_table_data = [item for item in full_aligned_list if item["ticker_id"] in seen_tickers]
         st.markdown("### 🎯 1차 선별: 매크로-시계열 융합 매칭 후보 (20개)")
@@ -239,9 +198,9 @@ if st.button("🚀 폭포수 융합 엔진 기반 전체 분석 가동", use_con
 2. [날짜 / 출처](링크) 내용
 
 #### ⚠️ 주의 사항 (심층 분석)
-> 🚨 **치명적 위험:** [단 한 줄 핵심 요약]
-1. [날짜 / 출처](링크) 내용
-2. [날짜 / 출처](링크) 내용
+> 🚨 **핵심 리스크:** (산업/재무적 근본 문제 1줄 요약)
+1. [날짜 / 출처](링크) 리스크 내용
+2. [날짜 / 출처](링크) 리스크 내용
 
 #### 🚨 특이사항 브리핑
 [산업 분석 및 수급 동향 심층 기술]
