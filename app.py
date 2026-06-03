@@ -159,7 +159,7 @@ if st.button("🚀 뉴스 호재 선행형 융합 분석 가동", use_container_
 [28대 대형 뉴스 데이터 (요약본)]
 {collected_macro_news}
 """
-        response1 = client.models.generate_content(model='gemini-2.0-flash', contents=prompt1, config=safety_config)
+        response1 = client.models.generate_content(model='gemini-2.0-flash', contents=prompt1)
         
         scanned_stocks = []
         seen_scanned = set()
@@ -230,7 +230,7 @@ if st.button("🚀 뉴스 호재 선행형 융합 분석 가동", use_container_
 [40개 대상군 수급 데이터]
 {kospi_pool_text}
 """
-        response_screen20 = client.models.generate_content(model='gemini-2.0-flash', contents=prompt_screen20, config=safety_config)
+        response_screen20 = client.models.generate_content(model='gemini-2.0-flash', contents=prompt_screen20)
         
         selected_stocks = []
         seen_tickers = set()
