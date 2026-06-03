@@ -45,20 +45,9 @@ st.markdown("""
 # ==========================================
 try:
     from google import genai
-    from google.genai import types
     client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
-    
-    # 💡 400 에러 원천 차단: 제미나이 안전 검열(Safety Filter) 완전 해제
-    safety_config = types.GenerateContentConfig(
-        safety_settings=[
-            types.SafetySetting(category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold=types.HarmBlockThreshold.BLOCK_NONE),
-            types.SafetySetting(category=types.HarmCategory.HARM_CATEGORY_HARASSMENT, threshold=types.HarmBlockThreshold.BLOCK_NONE),
-            types.SafetySetting(category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold=types.HarmBlockThreshold.BLOCK_NONE),
-            types.SafetySetting(category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold=types.HarmBlockThreshold.BLOCK_NONE),
-        ]
-    )
-except Exception:
-    st.error("🔑 대시보드 설정 창(Secrets)에서 GEMINI_API_KEY를 등록해주세요.")
+except Exception as e:
+    st.error(f"🔑 대시보드 설정 창(Secrets)에서 GEMINI_API_KEY를 등록해주세요. ({e})")
     st.stop()
 
 def clean_text(text):
@@ -123,7 +112,6 @@ if st.button("🚀 뉴스 호재 선행형 융합 분석 가동", use_container_
     # [공정 1/4] 28대 매크로 키워드 뉴스 수집 (순화된 키워드)
     # --------------------------------------------------
     with st.spinner("📰 [공정 1/4] 28대 매크로 및 모멘텀 키워드 뉴스 마이닝 중..."):
-        # 💡 민감 키워드 순화 완료 (미국 정책, 국내 정책 수혜주, 지정학적 리스크 적용)
         keywords = [
             "코스피 시황", "글로벌 증시", "나스닥", "반도체", "배터리", "우주", "방산", "항공", 
             "AI", "인공지능", "로보틱스", "자동화", "환율", "국제 유가", "지정학적 리스크", "젠슨황", "미국 정책", 
@@ -143,8 +131,8 @@ if st.button("🚀 뉴스 호재 선행형 융합 분석 가동", use_container_
             kospi_master = fdr.StockListing('KOSPI').dropna(subset=['Volume'])
             top_200_df = kospi_master.sort_values(by='Volume', ascending=False).head(200)
             master_text = "\n".join([f"{r['Name']}({r['Code']})" for _, r in top_200_df.iterrows()])
-        except:
-            st.error("거래소 마스터 목록 로드 실패")
+        except Exception as e:
+            st.error(f"🚨 거래소 데이터 로드 실패: {e}")
             st.stop()
 
         prompt1 = f"""
@@ -159,7 +147,14 @@ if st.button("🚀 뉴스 호재 선행형 융합 분석 가동", use_container_
 [28대 대형 뉴스 데이터 (요약본)]
 {collected_macro_news}
 """
-        response1 = client.models.generate_content(model='gemini-1.5-flash', contents=prompt1)
+        
+        # 💡 [핵심] 스트림릿의 에러 가림막을 뚫고 진짜 거절 사유를 화면에 강제 출력하는 방어막
+        try:
+            response1 = client.models.generate_content(model='gemini-2.0-flash', contents=prompt1)
+        except Exception as e:
+            st.error(f"🚨 제미나이 1차 분석 서버 통신 에러 (Google API 거절 사유): {e}")
+            st.info("💡 위 빨간 박스의 에러 내용 중에 'API key not valid'가 있다면 API 키를, 'Free tier is not available'이 있다면 구글 클라우드 결제 설정을 확인해주세요.")
+            st.stop()
         
         scanned_stocks = []
         seen_scanned = set()
@@ -189,6 +184,9 @@ if st.button("🚀 뉴스 호재 선행형 융합 분석 가동", use_container_
                 df_hist = fdr.DataReader(ticker, (now - datetime.timedelta(days=20)).strftime("%Y-%m-%d"))
                 trading_days = df_hist.index.tolist()
                 
+                if not trading_days:
+                    continue
+                    
                 yesterday_date_obj = trading_days[-1]
                 price_yesterday = int(df_hist.loc[yesterday_date_obj, 'Close'])
                 yesterday_label = yesterday_date_obj.strftime("%m월 %d일")
@@ -230,8 +228,13 @@ if st.button("🚀 뉴스 호재 선행형 융합 분석 가동", use_container_
 [40개 대상군 수급 데이터]
 {kospi_pool_text}
 """
-        response_screen20 = client.models.generate_content(model='gemini-1.5-flash', contents=prompt_screen20)
-        
+        # 💡 2차 분석 에러 방어막
+        try:
+            response_screen20 = client.models.generate_content(model='gemini-2.0-flash', contents=prompt_screen20)
+        except Exception as e:
+            st.error(f"🚨 제미나이 2차 분석 서버 통신 에러: {e}")
+            st.stop()
+            
         selected_stocks = []
         seen_tickers = set()
         for line in response_screen20.text.strip().split('\n'):
@@ -252,7 +255,8 @@ if st.button("🚀 뉴스 호재 선행형 융합 분석 가동", use_container_
                 ui_table_data.append(display_item)
                 
         st.markdown("### 🎯 1차 선별: 28대 호재-시계열 융합 매칭 후보 (20개)")
-        st.dataframe(pd.DataFrame(ui_table_data), use_container_width=True, hide_index=True)
+        if ui_table_data:
+            st.dataframe(pd.DataFrame(ui_table_data), use_container_width=True, hide_index=True)
 
         company_specific_news_text = ""
         for name, ticker in selected_stocks:
@@ -311,11 +315,11 @@ if st.button("🚀 뉴스 호재 선행형 융합 분석 가동", use_container_
 
 **- 어제 추천 여부:** [결과]
 """
+        # 💡 최종 분석 에러 방어막
         try:
-            # 💡 400 에러 차단 방어막 적용
-            response2 = client.models.generate_content(model='gemini-1.5-flash', contents=prompt2, config=safety_config)
+            response2 = client.models.generate_content(model='gemini-2.0-flash', contents=prompt2)
             st.success("✨ 28대 키워드 기반 크로스 분석 및 팩트 체크가 완벽히 완료되었습니다!")
             st.markdown("## 🎯 제미나이 엄선: 내일의 투자 유망 종목 TOP 10")
             st.markdown(response2.text)
         except Exception as e:
-            st.error(f"🚨 제미나이 리포트 빌드 중 트래픽 지연이 발생했습니다. 잠시 후 다시 눌러주세요. (에러: {e})")
+            st.error(f"🚨 제미나이 최종 리포트 빌드 에러: {e}")
