@@ -1,6 +1,5 @@
-pykrx
+finance-datareader
 google-genai
 feedparser
 pandas
-yfinance
 requests
