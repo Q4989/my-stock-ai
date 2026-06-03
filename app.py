@@ -54,7 +54,7 @@ except Exception:
     st.stop()
 
 # ==========================================
-# 📰 3. 구글/네이버 뉴스 마이닝 엔진 (날짜 및 링크 유지)
+# 📰 3. 구글/네이버 뉴스 마이닝 엔진
 # ==========================================
 def get_refined_market_news(keyword):
     news_list = []
@@ -74,7 +74,6 @@ def get_refined_market_news(keyword):
                     title = item['title'].replace('<b>', '').replace('</b>', '').replace('&quot;', '"')
                     news_list.append(f"[{item.get('pubDate', '실시간')[:16]} / 네이버뉴스] [{title}]({item['link']})")
     except: pass
-    
     return " | ".join(news_list) if news_list else f"[최근 / 시황] {keyword} 분석 유효"
 
 # ==========================================
@@ -84,7 +83,6 @@ now = datetime.datetime.now()
 today_str = now.strftime("%Y%m%d")
 start_52w_str = (now - datetime.timedelta(weeks=52)).strftime("%Y%m%d")
 
-# 가장 확실한 최근 마감 영업일 캘린더 확보
 cal_df = stock.get_market_ohlcv_by_date((now - datetime.timedelta(days=14)).strftime("%Y%m%d"), today_str, "005930")
 recent_days = [d.strftime("%Y%m%d") for d in cal_df.index]
 latest_closed_day = recent_days[-2] if (now.hour < 16 and recent_days[-1] == today_str) else recent_days[-1]
@@ -121,14 +119,13 @@ if st.button("🚀 폭포수 융합 엔진 기반 전체 분석 가동", use_con
         full_aligned_list = []
         
         try:
-            # 기본 베이스 (마감일 기준 상위 60종목)
             df_base = stock.get_market_ohlcv_by_ticker(latest_closed_day, market="KOSPI")
             top_60_tickers = df_base.sort_values(by='거래량', ascending=False).head(60).index.tolist()
             
             df_yesterday = stock.get_market_ohlcv_by_ticker(recent_days[-2] if len(recent_days)>=2 else recent_days[0], market="KOSPI")
             df_last_week = stock.get_market_ohlcv_by_ticker(recent_days[-6] if len(recent_days)>=6 else recent_days[0], market="KOSPI")
             
-            # [방어 1단계] 실시간 KRX 시도
+            # [방어 1단계] 실시간 KRX 데이터 시도
             krx_live_ok = False
             df_today_krx = pd.DataFrame()
             try:
@@ -138,36 +135,40 @@ if st.button("🚀 폭포수 융합 엔진 기반 전체 분석 가동", use_con
                     krx_live_ok = True
             except: pass
 
-            # [방어 2단계] 실패 시 야후 파이낸스 시도
-            yf_live_data = None
+            # [방어 2단계] 야후 파이낸스 멀티 인덱스 구조 무력화화 고도화
+            yf_prices = {}
             if not krx_live_ok:
                 try:
                     yf_tickers = [f"{t}.KS" for t in top_60_tickers]
-                    yf_live_data = yf.download(yf_tickers, period="1d", group_by='ticker', progress=False)
+                    # group_by='ticker'를 빼서 표 구조를 단순화시키고 결측치는 앞 데이터로 채움
+                    yf_live_data = yf.download(yf_tickers, period="5d", progress=False)
+                    if not yf_live_data.empty:
+                        # 야후의 꼬인 표 구조에서 'Close' 가격만 안전하게 종목별 매핑 추출
+                        for t in top_60_tickers:
+                            try:
+                                if len(top_60_tickers) == 1:
+                                    yf_prices[t] = int(yf_live_data['Close'].iloc[-1])
+                                else:
+                                    yf_prices[t] = int(yf_live_data['Close'][f"{t}.KS"].dropna().iloc[-1])
+                            except: pass
                 except: pass
 
-            # 종목별 데이터 조립 (폭포수 검증)
+            # 종목별 데이터 가공 조립
             data_source_used = "장 마감 데이터"
             for ticker in top_60_tickers:
                 name = stock.get_market_ticker_name(ticker)
-                
                 price_yesterday = int(df_yesterday.loc[ticker, '종가']) if ticker in df_yesterday.index else 0
                 price_last_week = int(df_last_week.loc[ticker, '종가']) if ticker in df_last_week.index else 0
                 price_today = 0
                 
-                # 순위별 우선 적용
                 if krx_live_ok and ticker in df_today_krx.index:
                     price_today = int(df_today_krx.loc[ticker, '종가'])
                     data_source_used = "KRX 실시간"
-                elif yf_live_data is not None and f"{ticker}.KS" in yf_live_data:
-                    try:
-                        tk_data = yf_live_data[f"{ticker}.KS"]
-                        if not tk_data.empty:
-                            price_today = int(tk_data['Close'].iloc[-1])
-                            data_source_used = "YFinance 실시간"
-                    except: pass
+                elif ticker in yf_prices:
+                    price_today = yf_prices[ticker]
+                    data_source_used = "YFinance 실시간"
                 
-                # [방어 3단계] 위 둘 다 실패면 안전한 마감일 데이터 사용
+                # [방어 3단계] 다 안되면 어제자 마감 통계 사용
                 if price_today == 0:
                     price_today = int(df_base.loc[ticker, '종가']) if ticker in df_base.index else price_yesterday
                 
