@@ -45,12 +45,22 @@ st.markdown("""
 # ==========================================
 try:
     from google import genai
+    from google.genai import types
     client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
+    
+    # 💡 400 에러 원천 차단: 제미나이 안전 검열(Safety Filter) 완전 해제
+    safety_config = types.GenerateContentConfig(
+        safety_settings=[
+            types.SafetySetting(category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold=types.HarmBlockThreshold.BLOCK_NONE),
+            types.SafetySetting(category=types.HarmCategory.HARM_CATEGORY_HARASSMENT, threshold=types.HarmBlockThreshold.BLOCK_NONE),
+            types.SafetySetting(category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold=types.HarmBlockThreshold.BLOCK_NONE),
+            types.SafetySetting(category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold=types.HarmBlockThreshold.BLOCK_NONE),
+        ]
+    )
 except Exception:
     st.error("🔑 대시보드 설정 창(Secrets)에서 GEMINI_API_KEY를 등록해주세요.")
     st.stop()
 
-# 특수문자 및 깨진 유니코드 필터링 (ClientError 400 원천 차단)
 def clean_text(text):
     text = re.sub(r'<[^>]+>', '', text)
     text = re.sub(r'[^가-힣a-zA-Z0-9\s.,?!%\[\]()\-]', ' ', text)
@@ -110,19 +120,19 @@ if st.button("🚀 뉴스 호재 선행형 융합 분석 가동", use_container_
     st.write("<br>", unsafe_allow_html=True)
 
     # --------------------------------------------------
-    # [공정 1/4] 28대 매크로 키워드 뉴스 수집
+    # [공정 1/4] 28대 매크로 키워드 뉴스 수집 (순화된 키워드)
     # --------------------------------------------------
     with st.spinner("📰 [공정 1/4] 28대 매크로 및 모멘텀 키워드 뉴스 마이닝 중..."):
+        # 💡 민감 키워드 순화 완료 (미국 정책, 국내 정책 수혜주, 지정학적 리스크 적용)
         keywords = [
-            "코스피 시황", "글로벌 증시", "나스닥", "반도체", "배터리", "우주", "방산", "무기", "항공", 
-            "AI", "인공지능", "로보틱스", "자동화", "환율", "국제 유가", "전쟁", "젠슨황", "트럼프 뉴스", 
-            "이재명", "한국무역", "매수", "매도", "투자", "협업", "협력", "m&a", "금리", "소비심리", "상장", "폐지"
+            "코스피 시황", "글로벌 증시", "나스닥", "반도체", "배터리", "우주", "방산", "항공", 
+            "AI", "인공지능", "로보틱스", "자동화", "환율", "국제 유가", "지정학적 리스크", "젠슨황", "미국 정책", 
+            "국내 정책 수혜주", "한국무역", "매수", "매도", "투자", "협업", "협력", "m&a", "금리", "소비심리", "상장", "폐지"
         ]
         collected_macro_news = ""
         for kw in keywords:
             collected_macro_news += f"\n[{kw}]\n{get_refined_market_news(kw)}\n"
             
-        # 텍스트 크기 압축 (서버 에러 방지용)
         collected_macro_news = collected_macro_news[:3500]
 
     # --------------------------------------------------
@@ -130,7 +140,6 @@ if st.button("🚀 뉴스 호재 선행형 융합 분석 가동", use_container_
     # --------------------------------------------------
     with st.spinner("🧠 [공정 2/4] 뉴스 호재 기반 유망 40개 도출 및 정밀 시점 연산 중..."):
         try:
-            # 전체 종목 대신 거래 활발한 '상위 200개'만 압축 (토큰 폭발 방지)
             kospi_master = fdr.StockListing('KOSPI').dropna(subset=['Volume'])
             top_200_df = kospi_master.sort_values(by='Volume', ascending=False).head(200)
             master_text = "\n".join([f"{r['Name']}({r['Code']})" for _, r in top_200_df.iterrows()])
@@ -138,11 +147,10 @@ if st.button("🚀 뉴스 호재 선행형 융합 분석 가동", use_container_
             st.error("거래소 마스터 목록 로드 실패")
             st.stop()
 
-        # 프롬프트 1: 200개 중 호재가 있는 40개 발굴
         prompt1 = f"""
 너는 주식 시장 전판을 읽는 퀀트 스크리너다. 
-제공된 [코스피 상위 200개 목록] 중에서, 아래의 [28대 대형 뉴스 데이터] 문맥을 분석하여 '투자, 협업, 협력, M&A, 상장, 우주/방산/AI 수주' 호재 재료가 발생해 탄력이 붙은 상위 40개 기업을 선별해라.
-[주의사항] '폐지' 등 리스크 악재 뉴스가 엮인 기업은 철저히 제외할 것.
+제공된 [코스피 상위 200개 목록] 중에서, 아래의 [28대 대형 뉴스 데이터] 문맥을 분석하여 '투자, 협업, 협력, M&A, 상장, 방산/AI 수주' 호재 재료가 발생해 탄력이 붙은 상위 40개 기업을 선별해라.
+[주의사항] '폐지' 등 악재 뉴스가 엮인 기업은 철저히 제외할 것.
 출력 형식은 기호나 번호 없이 반드시 `종목명,종목코드` 형태로만 한 줄에 하나씩 딱 40줄 출력해라.
 
 [코스피 상위 200개 목록]
@@ -151,7 +159,7 @@ if st.button("🚀 뉴스 호재 선행형 융합 분석 가동", use_container_
 [28대 대형 뉴스 데이터 (요약본)]
 {collected_macro_news}
 """
-        response1 = client.models.generate_content(model='gemini-2.5-flash', contents=prompt1)
+        response1 = client.models.generate_content(model='gemini-2.5-flash', contents=prompt1, config=safety_config)
         
         scanned_stocks = []
         seen_scanned = set()
@@ -164,7 +172,6 @@ if st.button("🚀 뉴스 호재 선행형 융합 분석 가동", use_container_
                     seen_scanned.add(s_ticker)
                     scanned_stocks.append((s_name, s_ticker))
 
-        # 40개 기업 네이버 시세 & FDR 연동
         kospi_pool_text = ""
         full_aligned_list = []
         live_time_label = now.strftime("%m월 %d일 %H시 %M분")
@@ -172,7 +179,6 @@ if st.button("🚀 뉴스 호재 선행형 융합 분석 가동", use_container_
 
         for name, ticker in scanned_stocks:
             try:
-                # 네이버 실시간 엔진
                 enc_url = f"https://polling.finance.naver.com/api/realtime?query=SERVICE_ITEM:{ticker}"
                 res = requests.get(enc_url, timeout=5).json()
                 item_data = res['result']['areas'][0]['datas'][0]
@@ -180,7 +186,6 @@ if st.button("🚀 뉴스 호재 선행형 융합 분석 가동", use_container_
                 price_today = int(item_data['nv'])
                 change_yesterday = float(item_data['cr'])
                 
-                # FDR 시계열 (연휴 스킵 로직)
                 df_hist = fdr.DataReader(ticker, (now - datetime.timedelta(days=20)).strftime("%Y-%m-%d"))
                 trading_days = df_hist.index.tolist()
                 
@@ -225,7 +230,7 @@ if st.button("🚀 뉴스 호재 선행형 융합 분석 가동", use_container_
 [40개 대상군 수급 데이터]
 {kospi_pool_text}
 """
-        response_screen20 = client.models.generate_content(model='gemini-2.5-flash', contents=prompt_screen20)
+        response_screen20 = client.models.generate_content(model='gemini-2.5-flash', contents=prompt_screen20, config=safety_config)
         
         selected_stocks = []
         seen_tickers = set()
@@ -249,7 +254,6 @@ if st.button("🚀 뉴스 호재 선행형 융합 분석 가동", use_container_
         st.markdown("### 🎯 1차 선별: 28대 호재-시계열 융합 매칭 후보 (20개)")
         st.dataframe(pd.DataFrame(ui_table_data), use_container_width=True, hide_index=True)
 
-        # 20개 종목 개별 뉴스 추가 수집
         company_specific_news_text = ""
         for name, ticker in selected_stocks:
             refined_comp_news = clean_text(get_refined_market_news(name))
@@ -308,7 +312,8 @@ if st.button("🚀 뉴스 호재 선행형 융합 분석 가동", use_container_
 **- 어제 추천 여부:** [결과]
 """
         try:
-            response2 = client.models.generate_content(model='gemini-2.5-flash', contents=prompt2)
+            # 💡 400 에러 차단 방어막 적용
+            response2 = client.models.generate_content(model='gemini-2.5-flash', contents=prompt2, config=safety_config)
             st.success("✨ 28대 키워드 기반 크로스 분석 및 팩트 체크가 완벽히 완료되었습니다!")
             st.markdown("## 🎯 제미나이 엄선: 내일의 투자 유망 종목 TOP 10")
             st.markdown(response2.text)
