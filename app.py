@@ -206,11 +206,16 @@ if st.button("🚀 더블 뉴스 엔진 기반 융합 분석 가동", use_contai
     # --------------------------------------------------
     # [STEP 2] 다차원 주가 시계열 분석 및 20개 후보 스크리닝
     # --------------------------------------------------
-    with st.spinner("🤖 [공정 2/4] 개별 기업의 다차원 시계열 데이터 연계 및 종목 후보 추출 중..."):
+    with st.spinner("🤖 [공정 2/4] 실제 시장 데이터를 불러오는 중..."):
         kospi_pool_text = ""
         full_aligned_list = []
         
         try:
+            # 💡 가장 최근 영업일 확인 및 데이터 조회
+            latest_trading_day = stock.get_market_ohlcv_by_date(start_52w_str, today_str, "005930").index[-1].strftime("%Y%m%d")
+            yesterday_trading_day = stock.get_market_ohlcv_by_date(start_52w_str, today_str, "005930").index[-2].strftime("%Y%m%d")
+            last_week_trading_day = stock.get_market_ohlcv_by_date(start_52w_str, today_str, "005930").index[-6].strftime("%Y%m%d")
+
             df_latest = stock.get_market_ohlcv_by_ticker(latest_trading_day, market="KOSPI")
             df_yesterday = stock.get_market_ohlcv_by_ticker(yesterday_trading_day, market="KOSPI")
             df_last_week = stock.get_market_ohlcv_by_ticker(last_week_trading_day, market="KOSPI")
@@ -235,30 +240,10 @@ if st.button("🚀 더블 뉴스 엔진 기반 융합 분석 가동", use_contai
                 })
                 kospi_pool_text += f"{name},{ticker},현재가:{price_today},전일가:{price_yesterday},전일대비:{change_yesterday:.2f}%,전주가:{price_last_week},전주대비:{change_last_week:.2f}%,52주누적:{return_52w:.2f}%\n"
                 
-        except Exception:
-            fallback_stocks = {
-                "SK하이닉스": ("000660", 2150000, 2110000, 2200000, 45.5),
-                "삼성전자": ("005930", 365000, 362000, 371000, -2.1),
-                "현대차": ("005380", 255000, 252000, 258000, 12.3),
-                "한화에어로스페이스": ("012450", 310000, 301000, 295000, 95.0),
-                "현대로템": ("064350", 62000, 60500, 58000, 42.1),
-                "한국가스공사": ("036460", 45000, 46200, 43000, 8.5),
-                "HMM": ("011200", 18200, 18000, 18900, -4.2),
-                "삼성중공업": ("010140", 11200, 10950, 10500, 15.3),
-                "네이버": ("035420", 175000, 173500, 181000, -11.4),
-                "LG에너지솔루션": ("373220", 395000, 391000, 405000, -8.7),
-                "셀트리온": ("068270", 192000, 189500, 195000, 3.1),
-                "KB금융": ("055560", 78000, 76500, 75200, 22.4)
-            }
-            for name, (ticker, p_td, p_yd, p_lw, r_52w) in fallback_stocks.items():
-                ch_yd = ((p_td - p_yd) / p_yd * 100)
-                ch_lw = ((p_td - p_lw) / p_lw * 100)
-                full_aligned_list.append({
-                    "종목명": name, "현재 금액": f"{p_td:,}원", "어제 금액": f"{p_yd:,}원", "어제 대비 상승률": f"{ch_yd:+.2f}%", 
-                    "저번주 금액": f"{p_lw:,}원", "저번주 대비 상승률": f"{ch_lw:+.2f}%", "ticker_id": ticker, "raw_change": ch_yd
-                })
-                kospi_pool_text += f"{name},{ticker},현재가:{p_td},전일가:{p_yd},전일대비:{ch_yd:.2f}%,전주가:{p_lw},전주대비:{ch_lw:.2f}%,52주누적:{r_52w:.2f}%\n"
-
+        except Exception as e:
+            st.error(f"🚨 시장 데이터 로드 실패: 현재 거래소 서버에서 데이터를 가져올 수 없습니다. 장 마감 후 다시 시도해 주세요. (에러: {e})")
+            st.stop()
+            
         prompt1 = f"""
         너는 주식 데이터 융합가야. 
         [11대 매크로 키워드 뉴스] 흐름과 제공된 [KOSPI 가격 시계열 변동 데이터]를 비교해서 내일 장에서 상승 탄력이 가장 강력할 후보 20개를 선정해라.
