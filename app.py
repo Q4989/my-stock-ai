@@ -159,7 +159,7 @@ if st.button("🚀 뉴스 호재 선행형 융합 분석 가동", use_container_
 [28대 대형 뉴스 데이터 (요약본)]
 {collected_macro_news}
 """
-        response1 = client.models.generate_content(model='gemini-2.5-flash', contents=prompt1, config=safety_config)
+        response1 = client.models.generate_content(model='gemini-2.0-flash', contents=prompt1, config=safety_config)
         
         scanned_stocks = []
         seen_scanned = set()
@@ -230,7 +230,7 @@ if st.button("🚀 뉴스 호재 선행형 융합 분석 가동", use_container_
 [40개 대상군 수급 데이터]
 {kospi_pool_text}
 """
-        response_screen20 = client.models.generate_content(model='gemini-2.5-flash', contents=prompt_screen20, config=safety_config)
+        response_screen20 = client.models.generate_content(model='gemini-2.0-flash', contents=prompt_screen20, config=safety_config)
         
         selected_stocks = []
         seen_tickers = set()
@@ -313,7 +313,7 @@ if st.button("🚀 뉴스 호재 선행형 융합 분석 가동", use_container_
 """
         try:
             # 💡 400 에러 차단 방어막 적용
-            response2 = client.models.generate_content(model='gemini-2.5-flash', contents=prompt2, config=safety_config)
+            response2 = client.models.generate_content(model='gemini-2.0-flash', contents=prompt2, config=safety_config)
             st.success("✨ 28대 키워드 기반 크로스 분석 및 팩트 체크가 완벽히 완료되었습니다!")
             st.markdown("## 🎯 제미나이 엄선: 내일의 투자 유망 종목 TOP 10")
             st.markdown(response2.text)
