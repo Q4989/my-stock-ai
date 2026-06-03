@@ -1,5 +1,6 @@
 finance-datareader
-google-genai
 feedparser
+streamlit
+google-genai
 pandas
 requests
