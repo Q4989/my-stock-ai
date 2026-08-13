@@ -5,38 +5,15 @@ on:
     # 14:55 KST = 05:55 UTC
     - cron: "55 5 * * 1-5"
 
-    # 09:30 KST = 00:30 UTC
-    - cron: "30 0 * * 1-5"
-
   workflow_dispatch:
-    inputs:
-      mode:
-        description: "Run mode"
-        required: true
-        default: "pick"
-        type: choice
-        options:
-          - pick
-          - score
 
 jobs:
   run:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Resolve run mode
-        shell: bash
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "RUN_MODE=${{ github.event.inputs.mode }}" >> "$GITHUB_ENV"
-          elif [ "${{ github.event.schedule }}" = "55 5 * * 1-5" ]; then
-            echo "RUN_MODE=pick" >> "$GITHUB_ENV"
-          elif [ "${{ github.event.schedule }}" = "30 0 * * 1-5" ]; then
-            echo "RUN_MODE=score" >> "$GITHUB_ENV"
-          else
-            echo "Unknown schedule/event"
-            exit 1
-          fi
+      - name: Set run mode
+        run: echo "RUN_MODE=pick" >> "$GITHUB_ENV"
 
       - name: Checkout
         uses: actions/checkout@v4
