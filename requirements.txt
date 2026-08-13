@@ -1,6 +1,9 @@
-finance-datareader
-feedparser
-streamlit
-google-genai
+FinanceDataReader
 pandas
 requests
+beautifulsoup4
+lxml
+gspread
+google-auth
+google-generativeai
+openpyxl
