@@ -1,0 +1,64 @@
+name: KOSPI Overnight Bot
+
+on:
+  schedule:
+    # 14:55 KST = 05:55 UTC
+    - cron: "55 5 * * 1-5"
+
+    # 09:30 KST = 00:30 UTC
+    - cron: "30 0 * * 1-5"
+
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Run mode"
+        required: true
+        default: "pick"
+        type: choice
+        options:
+          - pick
+          - score
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Resolve run mode
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "RUN_MODE=${{ github.event.inputs.mode }}" >> "$GITHUB_ENV"
+          elif [ "${{ github.event.schedule }}" = "55 5 * * 1-5" ]; then
+            echo "RUN_MODE=pick" >> "$GITHUB_ENV"
+          elif [ "${{ github.event.schedule }}" = "30 0 * * 1-5" ]; then
+            echo "RUN_MODE=score" >> "$GITHUB_ENV"
+          else
+            echo "Unknown schedule/event"
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run bot
+        env:
+          RUN_MODE: ${{ env.RUN_MODE }}
+          NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
+          NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python run.py
