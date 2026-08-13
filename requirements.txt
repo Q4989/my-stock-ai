@@ -1,10 +1,10 @@
 finance-datareader
 pandas
 requests
-beautifulsoup4
-lxml
+feedparser
 gspread
 google-auth
-google-generativeai
+google-genai
+lxml
+beautifulsoup4
 openpyxl
-feedparser
